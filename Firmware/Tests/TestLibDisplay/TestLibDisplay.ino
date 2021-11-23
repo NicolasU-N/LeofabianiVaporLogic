@@ -20,8 +20,8 @@ void setup() {
   pcf8574.pinMode(P7, OUTPUT);
 
   Wire.begin();
-  if (pcf8574.begin()) {
-    Serial.println("OK");
+  if (!pcf8574.begin()) {
+    Serial.println("ERROR PCF8574");
   }
 }
 
