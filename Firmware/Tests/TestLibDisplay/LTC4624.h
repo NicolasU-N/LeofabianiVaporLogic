@@ -1,7 +1,8 @@
 /** @file     LTC4624.h
-    @brief    Dynamic lighting for the 3-digit 7-segment common anode LED display
+    @brief    Dynamic lighting for the 3-digit 7-segment LED display
     @Author   Nicolas
     Created:  23/11/2021 12:32:10
+    Forked: https://github.com/victornpb/multiplexed-7segments-display/blob/master/sevenSeg.ino
 */
 
 #ifndef LTC4624_h
@@ -11,27 +12,13 @@
 #include "PCF8574.h"  // https://github.com/xreef/PCF8574_library
 #include "PWM.h"
 
-//#define DISPLAY_COM_A1  11
-//#define DISPLAY_COM_A2  9
-//#define DISPLAY_COM_A3  10
-
 #define ADDR_PCF        0x20
 
-#define SEG_H_PIN       P7
-#define SEG_A_PIN       P0
-#define SEG_B_PIN       P1
-#define SEG_C_PIN       P2
-#define SEG_D_PIN       P3
-#define SEG_E_PIN       P4
-#define SEG_F_PIN       P5
-#define SEG_G_PIN       P6
+//Change settings to match Common Cathode/Anode
+#define SEGMENT_ON HIGH
+#define COMMON_ON LOW
 
-
-#define BIT_IS_SET(reg, bit) ((reg>>bit)&1)
-
-#define SET_BIT(reg, bit) (reg |= (1<<bit))
-#define CLR_BIT(reg, bit) (reg &= (~(1<<bit)))
-
+#define ALPHA 0 //change to 1 to include leters 
 
 class LTC4624 {
 

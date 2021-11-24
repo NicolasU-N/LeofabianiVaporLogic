@@ -1,9 +1,9 @@
 #include <Wire.h>
 #include "PWM.h"
-#include "LTC4624.h"
+//#include "LTC4624.h"
 #include <TaskScheduler.h>
 
-LTC4624 Mylcd; //initialize LCD
+//LTC4624 Mylcd; //initialize LCD
 
 Scheduler runner;
 
