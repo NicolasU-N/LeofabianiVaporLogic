@@ -1,15 +1,29 @@
 #include <Wire.h>
 #include "PWM.h"
-//#include "LTC4624.h"
+#include "LTC4624.h"
 #include <TaskScheduler.h>
 
-//LTC4624 Mylcd; //initialize LCD
+LTC4624 Mylcd; //initialize LCD
 
 Scheduler runner;
 
 void t1Callback();
 
 Task t1(50, TASK_FOREVER, &t1Callback, &runner, true);
+
+const uint8_t displayCount = 3;
+const uint8_t displayCommonPins[2] = {A2, A3};
+const uint8_t displayPins[8] = {
+  P0, //A
+  P1, //B
+  P2, //C
+  P3, //D
+  P4, //E
+  P5, //F
+  P6, //G
+  P7  //H (Point)
+};
+
 
 //------------------------------------------------------------ TASKS
 void t1Callback() {
@@ -21,7 +35,7 @@ void setup() {
 
   Serial.begin(115200);
 
-  
+
   // Init PWM PINS
   PWMInit();
   PWMOn();
@@ -42,7 +56,7 @@ void setup() {
 }
 
 void loop() {
-  
+
 
   runner.execute();
 

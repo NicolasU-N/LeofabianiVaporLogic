@@ -18,19 +18,21 @@
 #define SEGMENT_ON HIGH
 #define COMMON_ON LOW
 
-#define ALPHA 0 //change to 1 to include leters 
+#define ALPHA 0 //change to 1 to include leters
 
 class LTC4624 {
+
+  private:
+    void sevenSeg_setDigit();
+    void sevenSeg_setDecimalPoint();
+    void sevenSeg_switchDisplay();    
+    int sevenSeg_scanSegments(byte data, uint8_t segmentNum);
 
   public:
     uint8_t dutyCycleLcd;
     LTC4624();
-    void lcdScan();
-    void lcdChar(uint8_t pos, uint8_t sign);
-    void lcdPrint(uint8_t pos, const char *str);
-    void lcdDot(uint8_t pos, uint8_t dot);
-    void lcdOff();
-    void lcdClear();
+    
+    
 
 };
 #endif
