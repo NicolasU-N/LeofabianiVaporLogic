@@ -1,3 +1,4 @@
+#include <EEPROM.h>
 #include <Wire.h>
 #include "PWM.h"
 #include "LTC4624.h"
@@ -9,13 +10,13 @@ Scheduler runner;
 
 void t1Callback();
 
-Task t1(100, TASK_FOREVER, &t1Callback, &runner, true);
+Task t1(1000, TASK_FOREVER, &t1Callback, &runner, true);
 
 uint8_t dutyCycleLcd = 0;
 
 //------------------------------------------------------------ TASKS
 void t1Callback() {
-  Serial.println("Hola");
+  //Serial.println("Hola");
 }
 
 void setup() {
@@ -33,10 +34,14 @@ void setup() {
 
   Mylcd.setDutyCycleLcd(255);
 
-  Mylcd.setNumber(141);
-  Mylcd.setDigit(0, Mylcd.getSevenSegFont(13));
-  Mylcd.setDecimalPoint(true, 0);
+
+  Mylcd.setDecimalPoint(true, 1);
   Mylcd.setDecimalPoint(false, 0);
+  
+  Mylcd.setNumber(141);
+
+  //Mylcd.setDigit(0, Mylcd.getSevenSegFont(13)); // A
+
 
   runner.startNow();  // set point-in-time for scheduling start
 
@@ -47,7 +52,7 @@ void loop() {
 
   runner.execute();
 
-  Mylcd.displayHold(100);
+  Mylcd.displayHold(900000000);
 
 
   // Se enciende con 0 el segmento

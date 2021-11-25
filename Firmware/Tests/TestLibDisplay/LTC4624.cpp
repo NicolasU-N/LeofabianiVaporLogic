@@ -92,9 +92,13 @@ void LTC4624::displayHold(unsigned int us) {
 /** function that perform the multiplexing to draw every digit */
 void LTC4624::sevenSegdisplay() {
   currentSegment = scanSegments(displayData[currentDigit], currentSegment);
+  Serial.print("ON ");
+  Serial.println(currentSegment);
 
   //change displays after scaning every segment on a single digit
   if (currentSegment > 7) {
+    Serial.print("CHANGE");
+    Serial.println(currentSegment);
     currentSegment = -1;
     switchDisplay();
   }
@@ -108,9 +112,9 @@ void LTC4624::switchDisplay() {
   //pinMode(displayCommonPins[currentDigit], INPUT);
 
   setPWMdisplay(0);
-
+  
   currentDigit = (currentDigit + 1) % displayCount; //next
-
+  
   setPWMdisplay(dutyCycleLcd);
 
 
