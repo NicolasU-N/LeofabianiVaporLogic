@@ -23,9 +23,6 @@ const uint8_t displayPins[8] = {
 
 
 //LTC4624::LTC4624() {
-
-
-
 //}
 
 
