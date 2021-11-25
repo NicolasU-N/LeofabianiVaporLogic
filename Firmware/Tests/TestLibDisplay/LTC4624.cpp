@@ -8,83 +8,57 @@ byte currentSegment; //number of the current segment in the multiplexing
 byte currentDigit; //multiplexing for multiple digits
 long previousMicros = 0; //variable to keep track of interval between segments
 
-const byte sevenSeg_font[] = {
-  B11111100,  // 0
-  B01100000,  // 1
-  B11011010,  // 2
-  B11110010,  // 3
-  B01100110,  // 4
-  B10110110,  // 5
-  B10111110,  // 6
-  B11100000,  // 7
-  B11111110,  // 8
-  B11110110,  // 9
+const uint8_t displayCount = 3;
 
-  B00000010, // dash -
-  //B00010000, // underscore _
-
-#if ALPHA==1
-  B11101110, //A
-  B00111110, //b
-  B10011100, //C
-  B00011010, //c
-  B01111010, //d
-  B10011110, //E
-  B10001110, //F
-  B01101110, //H
-  B00101110, //h
-  B00011100, //L
-  B01100000, //l
-  B11111100, //O
-  B00111010, //o
-  B11001110, //P
-  B10110110, //S
-#endif
-
-  B00000000,  // blank
+const uint8_t displayPins[8] = {
+  P0, //A
+  P1, //B
+  P2, //C
+  P3, //D
+  P4, //E
+  P5, //F
+  P6, //G
+  P7  //H (Point)
 };
+
+
+//LTC4624::LTC4624() {
+
+
+
+//}
+
 
 /**
   set pinsMode
 */
 
-LTC4624::LTC4624() {
+void LTC4624::sevenSegSetup() {
 
   uint8_t i = 8;
   while (i--)
-    pcf8574.pinMode(displayPins[i], OUTPUT);
+    pcf8574.pinMode(displayPins[i], OUTPUT, 1);
 
-  /*
-    pcf8574.pinMode(SEG_A_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_B_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_C_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_D_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_E_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_F_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_G_PIN, OUTPUT);
-    pcf8574.pinMode(SEG_H_PIN, OUTPUT);
-  */
-
-  Wire.begin();
-
-  if (pcf8574.begin()) {
+  if (!pcf8574.begin()) {
     Serial.println("ERROR PCF8574");
   }
 }
+
 
 /*
 
 */
 void LTC4624::setNumber(unsigned int n) {
-  sevenSeg_setDigit(1, sevenSeg_font[n / 10]);
-  sevenSeg_setDigit(0, sevenSeg_font[n % 10]);
+  setDigit(2, sevenSeg_font[n % 10]);
+  setDigit(1, sevenSeg_font[n / 10 % 10]);
+  setDigit(0, sevenSeg_font[n / 100 % 10]);
 }
 
 /** Set a display digit
   @param uint8_t digit - Display Index
   @param byte character - 7bit 0 paded character
 */
-void sevenSeg_setDigit(uint8_t digit, byte character) {
+void LTC4624::setDigit(uint8_t digit, byte character) {
   displayData[digit] = character | (displayData[digit] & B00000001); //set digit without changing the decimal point bit
 }
 
@@ -111,41 +85,47 @@ void LTC4624::displayHold(unsigned int us) {
   if (currentMicros - previousMicros > us) {
     previousMicros = currentMicros;
 
-    sevenSeg_display();
+    sevenSegdisplay();
   }
 }
 
 /** function that perform the multiplexing to draw every digit */
-void sevenSeg_display() {
-  currentSegment = sevenSeg_scanSegments(displayData[currentDigit], currentSegment);
+void LTC4624::sevenSegdisplay() {
+  currentSegment = scanSegments(displayData[currentDigit], currentSegment);
 
   //change displays after scaning every segment on a single digit
   if (currentSegment > 7) {
     currentSegment = -1;
-    sevenSeg_switchDisplay();
+    switchDisplay();
   }
 }
 
 /** switch to next display */
-void sevenSeg_switchDisplay() {
+void LTC4624::switchDisplay() {
 
   //switch off current display
-  pinMode(displayCommonPins[currentDigit], INPUT);
+
+  //pinMode(displayCommonPins[currentDigit], INPUT);
+
+  setPWMdisplay(0);
 
   currentDigit = (currentDigit + 1) % displayCount; //next
 
+  setPWMdisplay(dutyCycleLcd);
+
+
   //pinMode(displayCommonPins[currentDigit], OUTPUT);
-  digitalWrite(displayCommonPins[currentDigit], COMMON_ON);
+  //digitalWrite(displayCommonPins[currentDigit], COMMON_ON);
 }
 
 
 /** function that advance to each segment every time this is called */
-int sevenSeg_scanSegments(byte data, uint8_t segmentNum) {
+int LTC4624::scanSegments(byte data, uint8_t segmentNum) {
 
   byte segment;
   bool state;
 
-  digitalWrite(displayPins[segmentNum], !SEGMENT_ON); //turn previous segment OFF
+  pcf8574.digitalWrite(displayPins[segmentNum], !SEGMENT_ON); //turn previous segment OFF
 
   do {
     ++segmentNum; //cicle through the segments 0 to 7
@@ -156,7 +136,35 @@ int sevenSeg_scanSegments(byte data, uint8_t segmentNum) {
   }
   while (!state); //skip the dead segments time
 
-  digitalWrite(displayPins[segmentNum], SEGMENT_ON); //turn segment ON
+  pcf8574.digitalWrite(displayPins[segmentNum], SEGMENT_ON); //turn segment ON
 
   return segmentNum;
+}
+
+void setPWMdisplay(uint8_t dutylcd) {
+  switch (currentDigit) {
+    case 0:
+      setDutyPWMPB3(dutylcd);
+      break;
+    case 1:
+      setDutyPWMPB1(dutylcd);
+      break;
+    case 2:
+      setDutyPWMPB2(dutylcd);
+      break;
+  }
+}
+//-------------------------------------------
+void LTC4624::setDutyCycleLcd(uint8_t val)
+{
+  this->dutyCycleLcd = val;
+}
+
+uint8_t LTC4624::getDutyCycleLcd()
+{
+  return dutyCycleLcd;
+}
+
+byte LTC4624::getSevenSegFont(uint8_t id) {
+  return sevenSeg_font[id];
 }

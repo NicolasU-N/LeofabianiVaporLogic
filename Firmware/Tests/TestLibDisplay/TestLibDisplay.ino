@@ -9,32 +9,17 @@ Scheduler runner;
 
 void t1Callback();
 
-Task t1(50, TASK_FOREVER, &t1Callback, &runner, true);
+Task t1(100, TASK_FOREVER, &t1Callback, &runner, true);
 
-const uint8_t displayCount = 3;
-const uint8_t displayCommonPins[2] = {A2, A3};
-const uint8_t displayPins[8] = {
-  P0, //A
-  P1, //B
-  P2, //C
-  P3, //D
-  P4, //E
-  P5, //F
-  P6, //G
-  P7  //H (Point)
-};
-
+uint8_t dutyCycleLcd = 0;
 
 //------------------------------------------------------------ TASKS
 void t1Callback() {
-  //Mylcd.lcdScan();
   Serial.println("Hola");
 }
 
 void setup() {
-
   Serial.begin(115200);
-
 
   // Init PWM PINS
   PWMInit();
@@ -44,12 +29,14 @@ void setup() {
   setDutyPWMPB3(0);
   setDutyPWMPD3(0);
 
-  //Mylcd.dutyCycleLcd = 255;
+  Mylcd.sevenSegSetup();
 
-  //Mylcd.lcdPrint(0, "123");
-  //Mylcd.lcdDot(0, 1);
-  //Mylcd.lcdDot(1, 1);
-  //Mylcd.lcdDot(2, 1);
+  Mylcd.setDutyCycleLcd(255);
+
+  Mylcd.setNumber(141);
+  Mylcd.setDigit(0, Mylcd.getSevenSegFont(13));
+  Mylcd.setDecimalPoint(true, 0);
+  Mylcd.setDecimalPoint(false, 0);
 
   runner.startNow();  // set point-in-time for scheduling start
 
@@ -59,6 +46,8 @@ void loop() {
 
 
   runner.execute();
+
+  Mylcd.displayHold(100);
 
 
   // Se enciende con 0 el segmento
