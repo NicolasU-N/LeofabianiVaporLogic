@@ -25,6 +25,8 @@ const uint8_t scode[] = //codes of symbols //segments: g-f-e-d-c-b-a-h(dot)
   0b10111100, //15    //D
   0b11110010, //12    //E
   0b11100010, //17    //F
+  0b11100110, //18    //P
+  0b10100000, //19    //r
 };
 
 uint8_t sbuff[] =
@@ -122,6 +124,8 @@ void LTC4624::lcdChar(uint8_t pos, uint8_t sign) //print a character
     case 69: tmp = scode[16]; break;  //"E"
     case 70: tmp = scode[17]; break;  //"F"
     case 79: tmp = scode[0]; break;   //"O"
+    case 80: tmp = scode[18]; break;  //"P"
+    case 114: tmp = scode[19]; break; //"r"
   }
 
   if (pos <= 2) sbuff[pos] = (tmp | (sbuff[pos] & 0b00000001));

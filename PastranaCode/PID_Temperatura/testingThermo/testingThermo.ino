@@ -7,7 +7,7 @@ int thermoCLK = 6;
 MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   Serial.println("MAX6675 test");
   // wait for MAX chip to stabilize
