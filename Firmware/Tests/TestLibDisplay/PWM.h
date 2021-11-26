@@ -1,6 +1,6 @@
 /*
  	PWM.h
- 	PWM for timer 2 7812 Hz
+ 	PWM for timer 2 7812Hz 8 Bit and timer 1 7812Hz 16 Bit
  	Created: 09/04/2021 14:15:27
  	Author: Nicolas
 */
