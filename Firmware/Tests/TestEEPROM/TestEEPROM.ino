@@ -4,23 +4,32 @@
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  int i = 1024;
-  float f = 3.14;
+  int f = 1;
+  int i = 350;  
+  int j = 255;
 
 
-  int j;
-  float g;
+  int x;
+  int y;
+  int z;
 
-  EEPROM.put(0, i);
-  EEPROM.put(0 + sizeof(int), f);
+  EEPROM.put(0, 1); // °C or °F
+  EEPROM.put(1, i); // Setpoint
+  EEPROM.put(1 + sizeof(float), j); // brightness
 
-  EEPROM.get(0, j);
-  Serial.println(j, DEC);
+  
+  Serial.print("Read Address 0: ");
+  Serial.println(EEPROM.read(0));
 
-  EEPROM.get(0 + sizeof(int), g);
-  Serial.println(g, 3);
+  EEPROM.get(1, y);
+  Serial.print("Read Address 1: ");
+  Serial.println(y);
+
+  EEPROM.get(1 + sizeof(int), z);
+  Serial.print("Read Address 2: ");
+  Serial.println(z);
 
 }
 

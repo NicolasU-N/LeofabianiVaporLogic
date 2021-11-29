@@ -68,6 +68,8 @@ float consDOn = 0.0;  // derivative on Error to Measurement ratio (0.0-1.0)
 QuickPID myQuickPID(&readTemp, &Output, &Setpoint, consKp, consKi, consKd, aggPOn, consDOn, QuickPID::DIRECT);
 /////////////////////////////////////////////////////////
 
+void (*resetFunc)(void) = 0;
+
 //#######################################################
 #define CALIBRATION_TEMP 33
 #define CRITICAL_TEMP 70
@@ -99,6 +101,7 @@ const char *menuTitles[] = {
   "PrE",  //Presets
   "DE6",  //Change measurement °C <-> °F
   "Br1",  //Brightness adjustment
+  "rE5",  //Reset factory settings
 };
 
 const char *preTitles[] = {
@@ -179,6 +182,7 @@ void t3Callback() {
     tempThermocouple = "Er1"; // ER1 -> Does not detect thermocouple
     t5.disable(); // Disable task PID and off output
     setDutyPWMPD3(0);
+    digitalWrite(LEDRED , 1); // OFF LED RED
   }
 
 
@@ -192,14 +196,14 @@ void t4Callback() {
   Serial.println(chipTemp.deciCelsius() / 10.0, 1); //     chipTemp.deciCelsius() * gain / 10 + offset - gain * CALIBRATION_TEMP
   //Serial.println(); //chipTemp.deciCelsius() / 10.0, 1
 
-/*
-  if ((chipTemp.deciCelsius() / 10.0) > CRITICAL_TEMP) { //Critical temperature
-    t5.disable(); // Disable task PID and off output
-    setDutyPWMPD3(0);
-  } else {
+  /*
+    if ((chipTemp.deciCelsius() / 10.0) > CRITICAL_TEMP) { //Critical temperature
+      t5.disable(); // Disable task PID and off output
+      setDutyPWMPD3(0);
+    } else {
 
-  }
-*/
+    }
+  */
 
 }
 
@@ -207,7 +211,7 @@ void t4Callback() {
    @brief Task in charge of executing the pid
 */
 void t5Callback() {
-  Serial.println("---------------- PID ----------------");
+  Serial.println(F("---------------- PID ----------------"));
   float gap = abs(Setpoint - readTemp); //distance away from setpoint
   Serial.println(gap);
   if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
@@ -218,6 +222,7 @@ void t5Callback() {
   }
   myQuickPID.Compute();
   setDutyPWMPD3(Output);
+  Output > 25 ? digitalWrite(LEDRED , 0) : digitalWrite(LEDRED , 1);
 }
 //----------------------------------------------------------------------------------------
 
@@ -272,7 +277,7 @@ void longPressStart1() {
         Mylcd.lcdPrint(0, preTitles[0]);
         counterclick1 = 0;
         counterclick2 = 0;
-        Serial.println("PRE");
+        Serial.println(F("PRE"));
       }
       if (menuTitles[counterclick1] == "DE6" ) {
         maxIndex = *(&degTitles + 1) - degTitles; //length of array
@@ -280,7 +285,7 @@ void longPressStart1() {
         Mylcd.lcdPrint(0, degTitles[0]);
         counterclick1 = 0;
         counterclick2 = 0;
-        Serial.println("DEG");
+        Serial.println(F("DEG"));
       }
       if (menuTitles[counterclick1] == "Br1" ) {
         maxIndex = *(&brigTitles + 1) - brigTitles; //length of array
@@ -288,13 +293,27 @@ void longPressStart1() {
         Mylcd.lcdPrint(0, brigTitles[0]);
         counterclick1 = 0;
         counterclick2 = 0;
-        Serial.println("BRI");
+        Serial.println(F("BRI"));
+      }
+      if (menuTitles[counterclick1] == "rE5" ) {
+        maxIndex = 0; //length of array
+        STATE = NORMALMODE;
+        Mylcd.lcdPrint(0, "---");
+        counterclick1 = 0;
+        counterclick2 = 0;
+        EEPROM.put(1, 150.0); // Setpoint
+        EEPROM.put(0, 1); // °C
+        EEPROM.put(1 + sizeof(float), 255); // brightness
+        Serial.println(("RESET"));
+        resetFunc();
       }
       break;
     case INTOPRE:
 
       Setpoint = atof(preTitles[counterclick1]);
       Serial.println(Setpoint);
+
+      EEPROM.put(1, Setpoint); // Setpoint
 
       t1.enable();
       counterclick1 = 0;
@@ -306,10 +325,12 @@ void longPressStart1() {
       if (degTitles[counterclick1] == " C " ) {
         Serial.println("C");
         flagTemp = true;
+        EEPROM.put(0, 1); // °C
       }
       if (degTitles[counterclick1] == " F " ) {
         Serial.println("F");
         flagTemp = false;
+        EEPROM.put(0, 0); // °F
       }
 
       t1.enable();
@@ -321,6 +342,8 @@ void longPressStart1() {
 
       Mylcd.setDutyCycleLcd(atoi(brigTitles[counterclick1]));
       Serial.println(atoi(brigTitles[counterclick1]));
+
+      EEPROM.put(1 + sizeof(float), atoi(brigTitles[counterclick1])); // brightness
 
       t1.enable();
       counterclick1 = 0;
@@ -351,15 +374,12 @@ void click2() {
         Mylcd.lcdPrint(0, menuTitles[counterclick2]);
         break;
       case INTOPRE:
-        maxIndex = *(&preTitles + 1) - preTitles; //length of array
         Mylcd.lcdPrint(0, preTitles[counterclick2]);
         break;
       case INTODEGREES:
-        maxIndex = *(&degTitles + 1) - degTitles; //length of array
         Mylcd.lcdPrint(0, degTitles[counterclick2]);
         break;
       case INTOPWMLCD:
-        maxIndex = *(&brigTitles + 1) - brigTitles; //length of array
         Mylcd.lcdPrint(0, brigTitles[counterclick2]);
         break;
     }
@@ -402,6 +422,25 @@ void setup() {
   setDutyPWMPB2(0);
   setDutyPWMPB3(0);
   setDutyPWMPD3(0);
+
+  //Load last configuration
+  Serial.print("Read Address 0 (°C/°F): ");
+  if (EEPROM.read(0)) { //Read temperature flag status    (Address 0)
+    flagTemp = true;
+    Serial.println("true");
+  } else {
+    flagTemp = false;
+    Serial.println("false");
+  }
+
+  Serial.print("Read Address 1 setpoint: ");
+  EEPROM.get(1, Setpoint);
+  Serial.println(Setpoint);
+
+  Serial.print("Read Address 2 brightness: ");
+  EEPROM.get(1 + sizeof(float), dutyDisplay);
+  Serial.println(dutyDisplay);
+
 
   // Init lcd
   Mylcd.lcdInit();
