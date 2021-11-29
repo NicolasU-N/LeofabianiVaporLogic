@@ -7,7 +7,7 @@
 #include "max6675.h"
 #include "OneButton.h"
 #include "ChipTemp.h"
-#include "QuickPID.h" //https://github.com/Dlloydev/QuickPID/blob/master/examples/PID_AdaptiveTunings/PID_AdaptiveTunings.ino
+#include "QuickPID.h"      //https://github.com/Dlloydev/QuickPID/blob/master/examples/PID_AdaptiveTunings/PID_AdaptiveTunings.ino
 
 #define LEDGREEN    2
 #define LEDBLUE     A0
@@ -39,21 +39,21 @@ void t2Callback();
 void t3Callback();
 void t4Callback();
 
-//void t5Callback();
+void t5Callback();
 
 
 Task t0(7,      TASK_FOREVER, &t0Callback, &runner, true);
-Task t1(2000,   TASK_FOREVER, &t1Callback, &runner, true);  //Presetmode Temp - Setpoint
+Task t1(2000,   TASK_FOREVER, &t1Callback, &runner, true);    //Presetmode Temp - Setpoint
 Task t2(1000,   TASK_FOREVER, &t2Callback, &runner, true);
 Task t3(400,    TASK_FOREVER, &t3Callback, &runner, true);
-Task t4(60000,  TASK_FOREVER, &t4Callback, &runner, true);  //Read internal temperature
+Task t4(300000,  TASK_FOREVER, &t4Callback, &runner, true);   // 60000 Read internal temperature
 
-//States
-//Task t5(1, TASK_ONCE, &t5Callback, &runner, true);          //Enter Configuration mode
+//PID
+Task t5(401, TASK_FOREVER, &t5Callback, &runner, true);
 
 ///////////////////////////////////////////////////////// PID
 float Setpoint = 150; //In degrees celsius
-float Input;
+float readTemp = 0;   //Celcius
 float Output;
 
 //Define the aggressive and conservative and POn Tuning Parameters
@@ -65,18 +65,21 @@ float aggDOn =  1.0;  // derivative on Error to Measurement ratio (0.0-1.0)
 float consDOn = 0.0;  // derivative on Error to Measurement ratio (0.0-1.0)
 
 //Specify the links and initial tuning parameters
-QuickPID myQuickPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, aggPOn, consDOn, QuickPID::DIRECT);
+QuickPID myQuickPID(&readTemp, &Output, &Setpoint, consKp, consKi, consKd, aggPOn, consDOn, QuickPID::DIRECT);
 /////////////////////////////////////////////////////////
 
 //#######################################################
-#define CALIBRATION_TEMP 32
+#define CALIBRATION_TEMP 33
+#define CRITICAL_TEMP 70
+
 
 boolean toggleLcdMode = true;
 boolean toggleLedGreen = true;
 
-String  tempThermocouple;
-float   readTemp;           //Celcius or Fahrenheit
-boolean flagTemp = true;    //true -> Celcius
+String  tempThermocouple;   //Celcius or Fahrenheit
+boolean flagTemp = true;    //true  -> Celcius
+
+boolean flagError = false;  //false -> no error
 
 uint8_t dutyDisplay = 255;
 
@@ -88,34 +91,37 @@ uint8_t dutyDisplay = 255;
 
 uint8_t STATE = NORMALMODE;
 
-const char menuTitles [] = {
+uint8_t counterclick1 = 0;
+uint8_t counterclick2 = 0;
+uint8_t maxIndex = 0;
+
+const char *menuTitles[] = {
   "PrE",  //Presets
   "DE6",  //Change measurement °C <-> °F
   "Br1",  //Brightness adjustment
-}
+};
 
-const char PreTitles [] = {
+const char *preTitles[] = {
   "150",
   "200",
   "250",
   "300",
   "350",
-}
+};
 
-const char degTitles [] = {
+const char *degTitles[] = {
   " C ",
   " F ",
-}
+};
 
-const char brigTitles [] = {
-  "64",
+const char *brigTitles[] = {
+  "32 ",
+  "64 ",
   "127",
   "178",
   "216",
   "255",
-}
-
-
+};
 
 //#######################################################
 
@@ -141,6 +147,9 @@ void t1Callback() {
   }
 }
 
+/*
+   @brief blink of led and error check
+*/
 void t2Callback() {
   if (toggleLedGreen)
   {
@@ -152,32 +161,64 @@ void t2Callback() {
     digitalWrite(LEDGREEN, LOW);    // set the LED off
     toggleLedGreen = !toggleLedGreen;
   }
+
+
 }
 
 /*
    @brief Read thermocouple temperature every 400 ms
 */
 void t3Callback() {
-  readTemp = flagTemp ? thermocouple.readCelsius() : thermocouple.readFahrenheit();
-  tempThermocouple = (String)readTemp;
-  Serial.println(tempThermocouple);
+
+  if (!isnan(thermocouple.readCelsius())) {
+    readTemp = thermocouple.readCelsius();
+    tempThermocouple = flagTemp ? (String)thermocouple.readCelsius() : (String)thermocouple.readFahrenheit();
+    Serial.println(tempThermocouple);
+    t5.enable();
+  } else {
+    tempThermocouple = "Er1"; // ER1 -> Does not detect thermocouple
+    t5.disable(); // Disable task PID and off output
+    setDutyPWMPD3(0);
+  }
+
+
 }
 
 /*
    @brief Read internal temperature
 */
 void t4Callback() {
-  Serial.print("New offset at CALIBRATION_TEMP degrees: ");
-  Serial.println(chipTemp.deciCelsius() * gain / 10 + offset - gain * CALIBRATION_TEMP);
+  Serial.print("Internal temperature: ");
+  Serial.println(chipTemp.deciCelsius() / 10.0, 1); //     chipTemp.deciCelsius() * gain / 10 + offset - gain * CALIBRATION_TEMP
+  //Serial.println(); //chipTemp.deciCelsius() / 10.0, 1
+
+/*
+  if ((chipTemp.deciCelsius() / 10.0) > CRITICAL_TEMP) { //Critical temperature
+    t5.disable(); // Disable task PID and off output
+    setDutyPWMPD3(0);
+  } else {
+
+  }
+*/
+
 }
 
 /*
-   @brief Read internal temperature
+   @brief Task in charge of executing the pid
 */
-//void t5Callback() {
-//  Serial.print("---------------- MENU ----------------");
-
-//}
+void t5Callback() {
+  Serial.println("---------------- PID ----------------");
+  float gap = abs(Setpoint - readTemp); //distance away from setpoint
+  Serial.println(gap);
+  if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
+    myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
+  } else {
+    //we're far from setpoint, use aggressive tuning parameters
+    myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
+  }
+  myQuickPID.Compute();
+  setDutyPWMPD3(Output);
+}
 //----------------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------------- BTN 1 callback functions
@@ -186,7 +227,35 @@ void t4Callback() {
    @brief This function will be called when the button1 was pressed 1 time.
 */
 void click1() {
-  Serial.println("Button 1 click.");
+  if (STATE != NORMALMODE) {
+
+    counterclick1++;
+
+    if (counterclick1 == maxIndex) {
+      counterclick1 = 0;
+    }
+
+    Serial.print("Max index click 1: ");
+    Serial.println(maxIndex);
+    Serial.print("Current index");
+    Serial.println(counterclick1);
+
+    switch (STATE) {
+      case INTOMENU:
+        Mylcd.lcdPrint(0, menuTitles[counterclick1]);
+        break;
+      case INTOPRE:
+        Mylcd.lcdPrint(0, preTitles[counterclick1]);
+        break;
+      case INTODEGREES:
+        Mylcd.lcdPrint(0, degTitles[counterclick1]);
+        break;
+      case INTOPWMLCD:
+        Mylcd.lcdPrint(0, brigTitles[counterclick1]);
+        break;
+    }
+    counterclick2 = counterclick1;
+  }
 }
 
 /*
@@ -196,49 +265,121 @@ void longPressStart1() {
   Serial.println("Button 1 longPress start");
 
   switch (STATE) {
-    case NORMALMODE:
+    case INTOMENU:
+      if (menuTitles[counterclick1] == "PrE" ) {
+        maxIndex = *(&preTitles + 1) - preTitles; //length of array
+        STATE = INTOPRE;
+        Mylcd.lcdPrint(0, preTitles[0]);
+        counterclick1 = 0;
+        counterclick2 = 0;
+        Serial.println("PRE");
+      }
+      if (menuTitles[counterclick1] == "DE6" ) {
+        maxIndex = *(&degTitles + 1) - degTitles; //length of array
+        STATE = INTODEGREES;
+        Mylcd.lcdPrint(0, degTitles[0]);
+        counterclick1 = 0;
+        counterclick2 = 0;
+        Serial.println("DEG");
+      }
+      if (menuTitles[counterclick1] == "Br1" ) {
+        maxIndex = *(&brigTitles + 1) - brigTitles; //length of array
+        STATE = INTOPWMLCD;
+        Mylcd.lcdPrint(0, brigTitles[0]);
+        counterclick1 = 0;
+        counterclick2 = 0;
+        Serial.println("BRI");
+      }
+      break;
+    case INTOPRE:
 
-      if (button1.isLongPressed() && button2.isLongPressed()) {
-        Serial.println("Enter Menu");
-        t1.disable(); //Disable toggle
-        //CHANGE STATE
+      Setpoint = atof(preTitles[counterclick1]);
+      Serial.println(Setpoint);
+
+      t1.enable();
+      counterclick1 = 0;
+      counterclick2 = 0;
+      STATE = NORMALMODE;
+      break;
+    case INTODEGREES:
+
+      if (degTitles[counterclick1] == " C " ) {
+        Serial.println("C");
+        flagTemp = true;
+      }
+      if (degTitles[counterclick1] == " F " ) {
+        Serial.println("F");
+        flagTemp = false;
       }
 
+      t1.enable();
+      counterclick1 = 0;
+      counterclick2 = 0;
+      STATE = NORMALMODE;
       break;
-    case :
-      break;
-    case :
-      break;
-    case :
+    case INTOPWMLCD:
+
+      Mylcd.setDutyCycleLcd(atoi(brigTitles[counterclick1]));
+      Serial.println(atoi(brigTitles[counterclick1]));
+
+      t1.enable();
+      counterclick1 = 0;
+      counterclick2 = 0;
+      STATE = NORMALMODE;
       break;
   }
-
-
-
 }
 
 //---------------------------------------------------------------------------------------- BTN 2 callback functions
 
 void click2() {
-  Serial.println("Button 2 click.");
+  if (STATE != NORMALMODE) {
+
+    if (counterclick2 <= 0) {
+      counterclick2 = maxIndex;
+    }
+
+    counterclick2--;
+
+    Serial.print("Max index click 2: ");
+    Serial.println(maxIndex);
+    Serial.print("Current index");
+    Serial.println(counterclick2);
+
+    switch (STATE) {
+      case INTOMENU:
+        Mylcd.lcdPrint(0, menuTitles[counterclick2]);
+        break;
+      case INTOPRE:
+        maxIndex = *(&preTitles + 1) - preTitles; //length of array
+        Mylcd.lcdPrint(0, preTitles[counterclick2]);
+        break;
+      case INTODEGREES:
+        maxIndex = *(&degTitles + 1) - degTitles; //length of array
+        Mylcd.lcdPrint(0, degTitles[counterclick2]);
+        break;
+      case INTOPWMLCD:
+        maxIndex = *(&brigTitles + 1) - brigTitles; //length of array
+        Mylcd.lcdPrint(0, brigTitles[counterclick2]);
+        break;
+    }
+    counterclick1 = counterclick2;
+  }
 }
 
-void longPressStart2() {
-  Serial.println("Button 2 longPress start");
+void longPress2() {
 
   switch (STATE) {
     case NORMALMODE:
+      if (button1.isLongPressed() && button2.isLongPressed()) {
+        Serial.println("Enter Menu");
+        t1.disable(); //Disable toggle
+        //CHANGE STATE
+        Mylcd.lcdPrint(0, menuTitles[0]);
+        maxIndex = *(&menuTitles + 1) - menuTitles; //length of array
+        STATE = INTOMENU;
+      }
       break;
-    case :
-      break;
-    case :
-      break;
-    case :
-      break;
-  }
-
-  if (button1.isLongPressed() && button2.isLongPressed()) {
-    Serial.println("Enter Menu");
   }
 
 }
@@ -265,7 +406,7 @@ void setup() {
   // Init lcd
   Mylcd.lcdInit();
   Mylcd.setDutyCycleLcd(dutyDisplay);
-  Mylcd.lcdPrint(0, "AAA");
+  Mylcd.lcdPrint(0, "888");
   Mylcd.lcdDot(0, 0);
   Mylcd.lcdDot(1, 0);
   Mylcd.lcdDot(2, 0);
@@ -273,17 +414,13 @@ void setup() {
   //Init Btns
   button1.attachClick(click1);
   button1.attachLongPressStart(longPressStart1);
+  button1.attachDuringLongPress(longPress2);
   button2.attachClick(click2);
-  button2.attachLongPressStart(longPressStart2);
-
-  /*
-    if (button1.isLongPressed() && button2.isLongPressed()) {
-    Serial.println("Enter Menu");
-    }
-  */
+  button2.attachLongPressStart(longPressStart1);
+  button2.attachDuringLongPress(longPress2);
 
   //turn the PID on
-  //myQuickPID.SetMode(QuickPID::AUTOMATIC);
+  myQuickPID.SetMode(QuickPID::AUTOMATIC);
 
   runner.startNow();  // set point-in-time for scheduling start
   //t5.disable();

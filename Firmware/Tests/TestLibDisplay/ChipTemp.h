@@ -10,7 +10,7 @@
 // Resolution 0.1 degree
 
 // Calibration values, set in decimals
-static const float offset = 334.2; // change this by calibration result                    
+static const float offset = 328.15; // change this by calibration result                    
 static const float gain = 1.06154;
 
 static const int samples = 1000; // must be >= 1000, else the gain setting has no effect
