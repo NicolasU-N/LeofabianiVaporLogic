@@ -6,7 +6,6 @@
 #include <TaskScheduler.h> //https://github.com/arkhipenko/TaskScheduler
 #include "max6675.h"
 #include "OneButton.h"
-#include "ChipTemp.h"
 #include "QuickPID.h"      //https://github.com/Dlloydev/QuickPID/blob/master/examples/PID_AdaptiveTunings/PID_AdaptiveTunings.ino
 
 #define LEDGREEN    2
@@ -19,8 +18,8 @@
 
 #define BTN1        A1
 #define BTN2        A3
+#define UTEMP       A2
 
-ChipTemp chipTemp; // Internal temperature sensor
 
 // Setup a new OneButton on pin A1.
 OneButton button1(BTN1, true);
@@ -81,7 +80,9 @@ boolean toggleLedGreen = true;
 String  tempThermocouple;   //Celcius or Fahrenheit
 boolean flagTemp = true;    //true  -> Celcius
 
-boolean flagError = false;  //false -> no error
+boolean flagErrorThermocouple = false;  //false -> no error
+boolean flagErrorUTemp = false;
+boolean flagErrorHeater = false;
 
 uint8_t dutyDisplay = 255;
 
@@ -193,7 +194,8 @@ void t3Callback() {
 */
 void t4Callback() {
   Serial.print("Internal temperature: ");
-  Serial.println(chipTemp.deciCelsius() / 10.0, 1); //     chipTemp.deciCelsius() * gain / 10 + offset - gain * CALIBRATION_TEMP
+  
+  //Serial.println(chipTemp.deciCelsius() / 10.0, 1); //     chipTemp.deciCelsius() * gain / 10 + offset - gain * CALIBRATION_TEMP
   //Serial.println(); //chipTemp.deciCelsius() / 10.0, 1
 
   /*
