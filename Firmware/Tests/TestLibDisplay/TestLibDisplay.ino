@@ -253,23 +253,27 @@ void t5Callback() {
 
   if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
     myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
-
-
+    HEATERSTATE = HEATINGPID;
   } else {
     //we're far from setpoint, use aggressive tuning parameters
     myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
+    HEATERSTATE = PREHEATING;//set state preheat
+  }
 
-    //set state preheat
-
-
+  switch (HEATERSTATE) {
+    case HEATINGPID:
+      myQuickPID.Compute();
+      setDutyPWMPD3((int)Output);
+      Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
+      t8.disable();
+      break;
+    case PREHEATING:
+      setDutyPWMPD3(63); // 25% output
+t8.enable(); // enable 
+      break;
   }
 
 
-  myQuickPID.Compute();
-  setDutyPWMPD3(Output);
-
-
-  Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
 }
 
 
@@ -330,7 +334,7 @@ void t8Callback() {
 
   float gap = abs(Setpoint - readTemp); //distance away from setpoint
 
-  if () {
+  if (gap ) {
 
   }
 
@@ -575,7 +579,7 @@ void setup() {
   myQuickPID.SetMode(QuickPID::AUTOMATIC);
 
   runner.startNow();  // set point-in-time for scheduling start
-  t6.disable(); //
+  t6.disable(); // blink SOS
 }
 
 
