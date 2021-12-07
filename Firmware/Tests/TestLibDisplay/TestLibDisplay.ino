@@ -73,12 +73,16 @@ void (*resetFunc)(void) = 0;
 #define CALIBRATION_TEMP 33
 #define CRITICAL_TEMP 70
 
+unsigned long t = 0;
+unsigned long t_blink = 0;
 
 boolean toggleLcdMode = true;
 boolean toggleLedGreen = true;
 
 String  tempThermocouple;   //Celcius or Fahrenheit
 boolean flagTemp = true;    //true  -> Celcius
+
+float utemp = 0;
 
 boolean flagErrorThermocouple = false;  //false -> no error
 boolean flagErrorUTemp = false;
@@ -193,8 +197,23 @@ void t3Callback() {
    @brief Read internal temperature
 */
 void t4Callback() {
-  Serial.print("Internal temperature: ");
-  
+  //Serial.print("Internal temperature: ");
+
+  float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV
+  utemp = -0.0071024699 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
+
+  Serial.print(F("readUTemp = "));
+  Serial.println(readUTemp);
+
+  Serial.print(F("utemp = "));
+  Serial.println(utemp);
+
+  if (utemp >= CRITICAL_TEMP) { //Critical temperature
+    flagErrorUTemp = true;
+  } else {
+    flagErrorUTemp = false;
+  }
+
   //Serial.println(chipTemp.deciCelsius() / 10.0, 1); //     chipTemp.deciCelsius() * gain / 10 + offset - gain * CALIBRATION_TEMP
   //Serial.println(); //chipTemp.deciCelsius() / 10.0, 1
 
@@ -224,7 +243,7 @@ void t5Callback() {
   }
   myQuickPID.Compute();
   setDutyPWMPD3(Output);
-  Output > 25 ? digitalWrite(LEDRED , 0) : digitalWrite(LEDRED , 1);
+  Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
 }
 //----------------------------------------------------------------------------------------
 
@@ -242,9 +261,9 @@ void click1() {
       counterclick1 = 0;
     }
 
-    Serial.print("Max index click 1: ");
+    Serial.print(F("Max index click 1: "));
     Serial.println(maxIndex);
-    Serial.print("Current index");
+    Serial.print(F("Current index"));
     Serial.println(counterclick1);
 
     switch (STATE) {
@@ -306,7 +325,7 @@ void longPressStart1() {
         EEPROM.put(1, 150.0); // Setpoint
         EEPROM.put(0, 1); // °C
         EEPROM.put(1 + sizeof(float), 255); // brightness
-        Serial.println(("RESET"));
+        Serial.println(F("RESET"));
         resetFunc();
       }
       break;
@@ -366,9 +385,9 @@ void click2() {
 
     counterclick2--;
 
-    Serial.print("Max index click 2: ");
+    Serial.print(F("Max index click 2: "));
     Serial.println(maxIndex);
-    Serial.print("Current index");
+    Serial.print(F("Current index"));
     Serial.println(counterclick2);
 
     switch (STATE) {
@@ -394,7 +413,7 @@ void longPress2() {
   switch (STATE) {
     case NORMALMODE:
       if (button1.isLongPressed() && button2.isLongPressed()) {
-        Serial.println("Enter Menu");
+        Serial.println(F("Enter Menu"));
         t1.disable(); //Disable toggle
         //CHANGE STATE
         Mylcd.lcdPrint(0, menuTitles[0]);
@@ -412,6 +431,7 @@ void setup() {
   pinMode(LEDGREEN, OUTPUT);
   pinMode(LEDBLUE,  OUTPUT);
   pinMode(LEDRED,   OUTPUT);
+  pinMode(UTEMP,   INPUT);
 
   digitalWrite(LEDGREEN,  1); //OFF IN 1
   digitalWrite(LEDBLUE,   1);
