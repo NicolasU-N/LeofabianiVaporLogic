@@ -9,7 +9,7 @@ void setup() {
 
 void loop() {
   float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV
-  utemp = -0.0071024699 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
+  utemp = -0.000010541 * pow(readUTemp, 2) -0.1636 * (readUTemp) + 180.3525;
   Serial.print("readUTemp = ");
   Serial.println(readUTemp);
 

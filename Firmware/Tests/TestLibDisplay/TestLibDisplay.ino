@@ -20,6 +20,10 @@
 #define BTN2        A3
 #define UTEMP       A2
 
+// ----------------------------------------------- THERMAL_PROTECTION
+#define WATCH_TEMP_PERIOD 20  // Seconds
+#define WATCH_TEMP_INCREASE 2 // Degrees Celsius 
+// -----------------------------------------------
 
 // Setup a new OneButton on pin A1.
 OneButton button1(BTN1, true);
@@ -39,16 +43,23 @@ void t3Callback();
 void t4Callback();
 
 void t5Callback();
+void t6Callback();
+void t7Callback();
+void t8Callback();
 
+Task t0(7,      TASK_FOREVER, &t0Callback, &runner, true);    // 142.85Hz lcdScan
+Task t1(2000,   TASK_FOREVER, &t1Callback, &runner, true);    // Presetmode Temp - Setpoint
+Task t2(1000,   TASK_FOREVER, &t2Callback, &runner, true);    // Blink of led green 1Hz
+Task t3(400,    TASK_FOREVER, &t3Callback, &runner, true);    // Read thermocouple temperature every 400 ms
+Task t4(60000,  TASK_FOREVER, &t4Callback, &runner, true);    // 300000 Read internal temperature
 
-Task t0(7,      TASK_FOREVER, &t0Callback, &runner, true);
-Task t1(2000,   TASK_FOREVER, &t1Callback, &runner, true);    //Presetmode Temp - Setpoint
-Task t2(1000,   TASK_FOREVER, &t2Callback, &runner, true);
-Task t3(400,    TASK_FOREVER, &t3Callback, &runner, true);
-Task t4(300000,  TASK_FOREVER, &t4Callback, &runner, true);   // 60000 Read internal temperature
-
-//PID
+//PID and preheat
 Task t5(401, TASK_FOREVER, &t5Callback, &runner, true);
+
+//Error
+Task t6(200, 18, &t6Callback, &runner, true);                 // blink SOS
+Task t7(1001, TASK_FOREVER, &t7Callback, &runner, true);      // Error check
+Task t8(WATCH_TEMP_PERIOD * TASK_SECOND, TASK_FOREVER, &t8Callback, &runner, true);      // THERMAL_PROTECTION
 
 ///////////////////////////////////////////////////////// PID
 float Setpoint = 150; //In degrees celsius
@@ -70,11 +81,7 @@ QuickPID myQuickPID(&readTemp, &Output, &Setpoint, consKp, consKi, consKd, aggPO
 void (*resetFunc)(void) = 0;
 
 //#######################################################
-#define CALIBRATION_TEMP 33
 #define CRITICAL_TEMP 70
-
-unsigned long t = 0;
-unsigned long t_blink = 0;
 
 boolean toggleLcdMode = true;
 boolean toggleLedGreen = true;
@@ -97,6 +104,11 @@ uint8_t dutyDisplay = 255;
 #define INTOPWMLCD 4
 
 uint8_t STATE = NORMALMODE;
+
+#define PREHEATING 0
+#define HEATINGPID 1
+
+uint8_t HEATERSTATE = PREHEATING;
 
 uint8_t counterclick1 = 0;
 uint8_t counterclick2 = 0;
@@ -134,9 +146,13 @@ const char *brigTitles[] = {
 //#######################################################
 
 //---------------------------------------------------------------------------------------- TASKS
+/*
+   @brief lcdScan
+*/
 void t0Callback() {
   Mylcd.lcdScan();
 }
+
 
 /*
    @brief Shows the setpoint and after two seconds shows the current temperature
@@ -155,8 +171,9 @@ void t1Callback() {
   }
 }
 
+
 /*
-   @brief blink of led and error check
+   @brief blink of led 1Hz
 */
 void t2Callback() {
   if (toggleLedGreen)
@@ -169,9 +186,8 @@ void t2Callback() {
     digitalWrite(LEDGREEN, LOW);    // set the LED off
     toggleLedGreen = !toggleLedGreen;
   }
-
-
 }
+
 
 /*
    @brief Read thermocouple temperature every 400 ms
@@ -182,16 +198,15 @@ void t3Callback() {
     readTemp = thermocouple.readCelsius();
     tempThermocouple = flagTemp ? (String)thermocouple.readCelsius() : (String)thermocouple.readFahrenheit();
     Serial.println(tempThermocouple);
-    t5.enable();
+    //t5.enable(); //PID
+    flagErrorThermocouple = false;
   } else {
-    tempThermocouple = "Er1"; // ER1 -> Does not detect thermocouple
-    t5.disable(); // Disable task PID and off output
-    setDutyPWMPD3(0);
-    digitalWrite(LEDRED , 1); // OFF LED RED
+    flagErrorThermocouple = true;
   }
 
 
 }
+
 
 /*
    @brief Read internal temperature
@@ -199,9 +214,8 @@ void t3Callback() {
 void t4Callback() {
   //Serial.print("Internal temperature: ");
 
-  float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV
-  utemp = -0.0071024699 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
-
+  float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV //////////////////////////////////////////////////////////////////////////////////////////////// 3.3
+  utemp = -0.000010541 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
   Serial.print(F("readUTemp = "));
   Serial.println(readUTemp);
 
@@ -228,6 +242,7 @@ void t4Callback() {
 
 }
 
+
 /*
    @brief Task in charge of executing the pid
 */
@@ -235,16 +250,92 @@ void t5Callback() {
   Serial.println(F("---------------- PID ----------------"));
   float gap = abs(Setpoint - readTemp); //distance away from setpoint
   Serial.println(gap);
+
   if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
     myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
+
+
   } else {
     //we're far from setpoint, use aggressive tuning parameters
     myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
+
+    //set state preheat
+
+
   }
+
+
   myQuickPID.Compute();
   setDutyPWMPD3(Output);
+
+
   Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
 }
+
+
+/*
+   @brief The red led is blinked in morse SOS
+*/
+void t6Callback() {
+  t6.getRunCounter() > 5 and t6.getRunCounter() < 13 ? t6.setInterval(500) : t6.setInterval(200);
+
+  if ( t6.getRunCounter() & 1 ) {
+    digitalWrite(LEDRED, LOW);
+  }
+  else {
+    digitalWrite(LEDRED, HIGH);
+  }
+
+  if ( t6.isLastIteration() ) {
+    t6.restartDelayed( 1 * TASK_SECOND );
+    digitalWrite(LEDRED, HIGH);
+  }
+}
+
+
+/*
+   @brief Check for an error in the system
+*/
+void t7Callback() {
+
+  if (flagErrorThermocouple || flagErrorUTemp || flagErrorHeater) {
+    setDutyPWMPD3(0);
+    t1.disable(); // Disable Presetmode Temp - Setpoint
+    t6.enable();  // Enable blink SOS
+  } else {
+    t1.enable();  // Enable Presetmode Temp - Setpoint
+    t6.disable(); // Disable blink SOS
+  }
+
+  if (flagErrorThermocouple) {
+    Mylcd.lcdPrint(0, "Er1"); // ER1 -> Does not detect thermocouple
+  }
+
+
+  if (flagErrorUTemp) {
+    Mylcd.lcdPrint(0, "Er2"); // ER2 -> Microcontroller temperature is higher than critical temperature
+  }
+
+  if (flagErrorHeater) {
+    Mylcd.lcdPrint(0, "Er3"); // ER3 -> There is a problem with the heater
+  }
+
+}
+
+
+/*
+   @brief THERMAL_PROTECTION_INCREASE
+*/
+void t8Callback() {
+
+  float gap = abs(Setpoint - readTemp); //distance away from setpoint
+
+  if () {
+
+  }
+
+}
+
 //----------------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------------- BTN 1 callback functions
@@ -446,20 +537,20 @@ void setup() {
   setDutyPWMPD3(0);
 
   //Load last configuration
-  Serial.print("Read Address 0 (°C/°F): ");
+  Serial.print(F("Read Address 0 (°C/°F): "));
   if (EEPROM.read(0)) { //Read temperature flag status    (Address 0)
     flagTemp = true;
-    Serial.println("true");
+    Serial.println(F("true"));
   } else {
     flagTemp = false;
-    Serial.println("false");
+    Serial.println(F("false"));
   }
 
-  Serial.print("Read Address 1 setpoint: ");
+  Serial.print(F("Read Address 1 setpoint: "));
   EEPROM.get(1, Setpoint);
   Serial.println(Setpoint);
 
-  Serial.print("Read Address 2 brightness: ");
+  Serial.print(F("Read Address 2 brightness: "));
   EEPROM.get(1 + sizeof(float), dutyDisplay);
   Serial.println(dutyDisplay);
 
@@ -484,7 +575,7 @@ void setup() {
   myQuickPID.SetMode(QuickPID::AUTOMATIC);
 
   runner.startNow();  // set point-in-time for scheduling start
-  //t5.disable();
+  t6.disable(); //
 }
 
 
