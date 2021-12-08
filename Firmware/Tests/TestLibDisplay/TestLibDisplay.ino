@@ -1,3 +1,25 @@
+/*
+  VAPORLOGIC V2.0
+
+  TODO:
+
+  ----------------
+  Pin Mapping:
+  Physical Pin      Arduino Pin    Port Pin     Function
+  ========================================================
+  13                09             PB1          A2
+  14                10             PB2          A3
+  15                11             PB3          A1
+  23                A0             PC0          BLUE
+  24                A1             PC1          SW1
+  25                A2             PC2          UCTEMP
+  26                A3             PC3          SW2
+  32                A2             PD2          GREEN
+  01                D3             PD3          OUT_PWR
+  11                D7             PD7          RED
+
+*/
+
 #include <avr/pgmspace.h>
 #include <EEPROM.h>
 #include <Wire.h>
@@ -195,18 +217,16 @@ void t2Callback() {
    @brief Read thermocouple temperature every 400 ms
 */
 void t3Callback() {
-
   if (!isnan(thermocouple.readCelsius())) {
     readTemp = thermocouple.readCelsius();
     tempThermocouple = flagTemp ? (String)thermocouple.readCelsius() : (String)thermocouple.readFahrenheit();
+    Serial.print(F("Thermocouple -> "));
     Serial.println(tempThermocouple);
     //t5.enable(); //PID
     flagErrorThermocouple = false;
   } else {
     flagErrorThermocouple = true;
   }
-
-
 }
 
 
@@ -218,7 +238,7 @@ void t4Callback() {
 
   float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV //////////////////////////////////////////////////////////////////////////////////////////////// 3.3
   utemp = -0.000010541 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
-  Serial.print(F("readUTemp = "));
+  Serial.print(F("readUTempMV = "));
   Serial.print(readUTemp);
   Serial.print(F("\t utemp = "));
   Serial.println(utemp);
@@ -250,6 +270,7 @@ void t4Callback() {
 void t5Callback() {
   Serial.println(F("---------------- PID ----------------"));
   float gap = abs(Setpoint - readTemp); //distance away from setpoint
+  Serial.print(F("gap -> "));
   Serial.println(gap);
 
   if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
@@ -263,13 +284,24 @@ void t5Callback() {
 
   switch (HEATERSTATE) {
     case HEATINGPID:
+      Serial.println(F("HEATINGPID"));
       myQuickPID.Compute();
-      setDutyPWMPD3((int)Output);
-      Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
+      if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
+        setDutyPWMPD3((int)Output);
+        Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
+
+        Serial.println(F("HEATINGPID NO ERROR"));
+      }
       t8.disable();
       break;
     case PREHEATING:
-      setDutyPWMPD3(63); // 25% output
+      Serial.println(F("PREHEATING"));
+
+      if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
+        setDutyPWMPD3(63); // 25% output
+        Serial.println(F("PREHEATING NO ERROR"));
+      }
+
       t8.enableIfNot(); // enable
       break;
   }
@@ -442,6 +474,7 @@ void longPressStart1() {
       EEPROM.put(1, Setpoint); // Setpoint
 
       t1.enableIfNot();
+      t7.enableIfNot(); 
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -460,6 +493,7 @@ void longPressStart1() {
       }
 
       t1.enableIfNot();
+      t7.enableIfNot(); 
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -472,6 +506,7 @@ void longPressStart1() {
       EEPROM.put(1 + sizeof(float), atoi(brigTitles[counterclick1])); // brightness
 
       t1.enableIfNot();
+      t7.enableIfNot(); 
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -520,6 +555,7 @@ void longPress2() {
       if (button1.isLongPressed() && button2.isLongPressed()) {
         Serial.println(F("Enter Menu"));
         t1.disable(); //Disable toggle
+        t7.disable(); //Disable error check
         //CHANGE STATE
         Mylcd.lcdPrint(0, menuTitles[0]);
         maxIndex = *(&menuTitles + 1) - menuTitles; //length of array
