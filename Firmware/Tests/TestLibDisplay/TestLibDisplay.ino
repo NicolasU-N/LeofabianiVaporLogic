@@ -57,7 +57,7 @@ Task t4(60000,  TASK_FOREVER, &t4Callback, &runner, true);    // 300000 Read int
 Task t5(401, TASK_FOREVER, &t5Callback, &runner, true);
 
 //Error
-Task t6(200, 18, &t6Callback, &runner, true);                 // blink SOS
+Task t6(202, 18, &t6Callback, &runner, true);                 // blink SOS
 Task t7(1001, TASK_FOREVER, &t7Callback, &runner, true);      // Error check
 Task t8(WATCH_TEMP_PERIOD * TASK_SECOND, TASK_FOREVER, &t8Callback, &runner, true);      // THERMAL_PROTECTION
 
@@ -90,6 +90,8 @@ String  tempThermocouple;   //Celcius or Fahrenheit
 boolean flagTemp = true;    //true  -> Celcius
 
 float utemp = 0;
+
+float antgap = 0;
 
 boolean flagErrorThermocouple = false;  //false -> no error
 boolean flagErrorUTemp = false;
@@ -217,9 +219,8 @@ void t4Callback() {
   float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV //////////////////////////////////////////////////////////////////////////////////////////////// 3.3
   utemp = -0.000010541 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
   Serial.print(F("readUTemp = "));
-  Serial.println(readUTemp);
-
-  Serial.print(F("utemp = "));
+  Serial.print(readUTemp);
+  Serial.print(F("\t utemp = "));
   Serial.println(utemp);
 
   if (utemp >= CRITICAL_TEMP) { //Critical temperature
@@ -269,11 +270,9 @@ void t5Callback() {
       break;
     case PREHEATING:
       setDutyPWMPD3(63); // 25% output
-t8.enable(); // enable 
+      t8.enableIfNot(); // enable
       break;
   }
-
-
 }
 
 
@@ -281,7 +280,7 @@ t8.enable(); // enable
    @brief The red led is blinked in morse SOS
 */
 void t6Callback() {
-  t6.getRunCounter() > 5 and t6.getRunCounter() < 13 ? t6.setInterval(500) : t6.setInterval(200);
+  t6.getRunCounter() > 5 and t6.getRunCounter() < 13 ? t6.setInterval(502) : t6.setInterval(202);
 
   if ( t6.getRunCounter() & 1 ) {
     digitalWrite(LEDRED, LOW);
@@ -305,9 +304,9 @@ void t7Callback() {
   if (flagErrorThermocouple || flagErrorUTemp || flagErrorHeater) {
     setDutyPWMPD3(0);
     t1.disable(); // Disable Presetmode Temp - Setpoint
-    t6.enable();  // Enable blink SOS
+    t6.enableIfNot();  // Enable blink SOS
   } else {
-    t1.enable();  // Enable Presetmode Temp - Setpoint
+    t1.enableIfNot();  // Enable Presetmode Temp - Setpoint
     t6.disable(); // Disable blink SOS
   }
 
@@ -332,10 +331,21 @@ void t7Callback() {
 */
 void t8Callback() {
 
-  float gap = abs(Setpoint - readTemp); //distance away from setpoint
+  if (!t8.isFirstIteration()) {
+    float gap1 = abs(Setpoint - readTemp); //distance away from setpoint
 
-  if (gap ) {
+    Serial.print(F("gap1 = "));
+    Serial.print(gap1);
+    Serial.print(F("\t antgap = "));
+    Serial.println(antgap);
 
+    if (gap1 >= antgap + WATCH_TEMP_INCREASE) {
+      flagErrorHeater = false;
+    } else {
+      flagErrorHeater = true;
+    }
+
+    antgap = gap1;
   }
 
 }
@@ -431,7 +441,7 @@ void longPressStart1() {
 
       EEPROM.put(1, Setpoint); // Setpoint
 
-      t1.enable();
+      t1.enableIfNot();
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -449,7 +459,7 @@ void longPressStart1() {
         EEPROM.put(0, 0); // °F
       }
 
-      t1.enable();
+      t1.enableIfNot();
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -461,7 +471,7 @@ void longPressStart1() {
 
       EEPROM.put(1 + sizeof(float), atoi(brigTitles[counterclick1])); // brightness
 
-      t1.enable();
+      t1.enableIfNot();
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -580,6 +590,7 @@ void setup() {
 
   runner.startNow();  // set point-in-time for scheduling start
   t6.disable(); // blink SOS
+  //t8.disable(); // THERMAL_PROTECTION
 }
 
 
