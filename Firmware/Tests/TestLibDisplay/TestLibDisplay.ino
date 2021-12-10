@@ -94,7 +94,7 @@ double Input;
 double Output;
 
 // PID TUNNING
-double Kp = 0.3, Ki = 0.0 , Kd = 0.0; //0.15    0.45
+double Kp = 1.0, Ki = 0 , Kd = 0.4; //0.15    0.45
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 /////////////////////////////////////////////////////////
 
@@ -275,40 +275,40 @@ void t5Callback() {
   //Serial.println(gap);
 
 
-  //if (gap < 0 or (gap > 0 and gap < 49)) { //we're close to setpoint, use conservative tuning parameters
-  //myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
-  HEATERSTATE = HEATINGPID;
-  //} else {
-  //we're far from setpoint, use aggressive tuning parameters
-  //myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
-  //HEATERSTATE = PREHEATING;//set state preheat
-  //}
+  if (gap < 0 or (gap >= 0 and gap < 49)) { //we're close to setpoint, use conservative tuning parameters
+    //myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
+    HEATERSTATE = HEATINGPID;
+  } else {
+    //we're far from setpoint, use aggressive tuning parameters
+    //myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
+    HEATERSTATE = PREHEATING;//set state preheat
+  }
 
   switch (HEATERSTATE) {
     case HEATINGPID:
       //Serial.println(F("HEATINGPID"));
 
-      //if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
+      if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
         myPID.Compute();
         setDutyPWMPD3((int)Output);
         //analogWrite(3, Output);
-        Output > 75 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
+        Output > 50 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
         //Serial.println(F("HEATINGPID NO ERROR"));
-      //} else {
+      } else {
         //Serial.println(F("HEATINGPID ERROR"));
-        //setDutyPWMPD3(255); // OFF
-      //}
+        setDutyPWMPD3(0); // OFF
+      }
 
       t8.disable();
       break;
     case PREHEATING:
-      Output = 185;
+      Output = 80;
       if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
         setDutyPWMPD3(Output); // 25% output
         //Serial.println(F("PRE-HEATING NO ERROR"));
       } else {
         //Serial.println(F("PRE-HEATING ERROR"));
-        setDutyPWMPD3(255); // OFF
+        setDutyPWMPD3(0); // OFF
       }
 
       t8.enableIfNot(); // enable
@@ -317,7 +317,8 @@ void t5Callback() {
 
   Serial.print(F("Setpoint:"));  Serial.print(Setpoint);  Serial.print(F(","));
   Serial.print(F("Input:"));     Serial.print(Input);     Serial.print(F(","));
-  Serial.print(F("Output:"));    Serial.print(Output);    Serial.println(F(","));
+  Serial.print(F("Output:"));    Serial.print(Output);    Serial.print(F(","));
+  Serial.print(F("Gap:"));       Serial.print(gap);       Serial.println(F(","));
 }
 
 
@@ -347,7 +348,7 @@ void t6Callback() {
 void t7Callback() {
 
   if (flagErrorThermocouple || flagErrorUTemp || flagErrorHeater) {
-    setDutyPWMPD3(255); // PWM REVERSE 255-> NO HEATING ||  0-> HEATING
+    setDutyPWMPD3(0); // PWM REVERSE 255-> NO HEATING ||  0-> HEATING
     t1.disable(); // Disable Presetmode Temp - Setpoint
     t6.enableIfNot();  // Enable blink SOS
   } else {
