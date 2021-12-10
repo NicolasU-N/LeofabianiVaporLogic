@@ -28,7 +28,7 @@
 #include <TaskScheduler.h> //https://github.com/arkhipenko/TaskScheduler
 #include "max6675.h"
 #include "OneButton.h"
-#include "QuickPID.h"      //https://github.com/Dlloydev/QuickPID/blob/master/examples/PID_AdaptiveTunings/PID_AdaptiveTunings.ino
+#include <PID_v1.h>      //https://github.com/br3ttb/Arduino-PID-Library
 
 #define LEDGREEN    2
 #define LEDBLUE     A0
@@ -84,20 +84,18 @@ Task t7(1001, TASK_FOREVER, &t7Callback, &runner, true);      // Error check
 Task t8(WATCH_TEMP_PERIOD * TASK_SECOND, TASK_FOREVER, &t8Callback, &runner, true);      // THERMAL_PROTECTION
 
 ///////////////////////////////////////////////////////// PID
-float Setpoint = 150; //In degrees celsius
-float readTemp = 0;   //Celcius
-float Output;
+//float Setpoint = 150; //In degrees celsius
+//float readTemp = 0;   //Celcius
+//float Output;
 
 //Define the aggressive and conservative and POn Tuning Parameters
-float aggKp = 4, aggKi = 0.2, aggKd = 1;
-float consKp = 1, consKi = 0.05, consKd = 0.25;
-float aggPOn =  1.0;  // proportional on Error to Measurement ratio (0.0-1.0)
-float consPOn = 0.0;  // proportional on Error to Measurement ratio (0.0-1.0)
-float aggDOn =  1.0;  // derivative on Error to Measurement ratio (0.0-1.0)
-float consDOn = 0.0;  // derivative on Error to Measurement ratio (0.0-1.0)
+double Setpoint = 150;
+double Input;
+double Output;
 
-//Specify the links and initial tuning parameters
-QuickPID myQuickPID(&readTemp, &Output, &Setpoint, consKp, consKi, consKd, aggPOn, consDOn, QuickPID::DIRECT);
+// PID TUNNING
+double Kp = 0.3, Ki = 0.0 , Kd = 0.0; //0.15    0.45
+PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 /////////////////////////////////////////////////////////
 
 void (*resetFunc)(void) = 0;
@@ -218,10 +216,10 @@ void t2Callback() {
 */
 void t3Callback() {
   if (!isnan(thermocouple.readCelsius())) {
-    readTemp = thermocouple.readCelsius();
+    Input = (double)thermocouple.readCelsius();
     tempThermocouple = flagTemp ? (String)thermocouple.readCelsius() : (String)thermocouple.readFahrenheit();
-    Serial.print(F("Thermocouple -> "));
-    Serial.println(tempThermocouple);
+    //Serial.print(F("Thermocouple -> "));
+    //Serial.println(tempThermocouple);
     //t5.enable(); //PID
     flagErrorThermocouple = false;
   } else {
@@ -238,10 +236,13 @@ void t4Callback() {
 
   float readUTemp = (analogRead(UTEMP) / 1023.0) * 5.0 * 1000; //convert mV //////////////////////////////////////////////////////////////////////////////////////////////// 3.3
   utemp = -0.000010541 * pow(readUTemp, 2) - 0.1636 * (readUTemp) + 180.3525;
-  Serial.print(F("readUTempMV = "));
-  Serial.print(readUTemp);
-  Serial.print(F("\t utemp = "));
-  Serial.println(utemp);
+
+  /*
+    Serial.print(F("readUTempMV = "));
+    Serial.print(readUTemp);
+    Serial.print(F("\t utemp = "));
+    Serial.println(utemp);
+  */
 
   if (utemp >= CRITICAL_TEMP) { //Critical temperature
     flagErrorUTemp = true;
@@ -268,43 +269,55 @@ void t4Callback() {
    @brief Task in charge of executing the pid
 */
 void t5Callback() {
-  Serial.println(F("---------------- PID ----------------"));
-  float gap = abs(Setpoint - readTemp); //distance away from setpoint
-  Serial.print(F("gap -> "));
-  Serial.println(gap);
+  //Serial.println(F("---------------- PID ----------------"));
+  float gap = Setpoint - Input; //distance away from setpoint
+  //Serial.print(F("gap -> "));
+  //Serial.println(gap);
 
-  if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
-    myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
-    HEATERSTATE = HEATINGPID;
-  } else {
-    //we're far from setpoint, use aggressive tuning parameters
-    myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
-    HEATERSTATE = PREHEATING;//set state preheat
-  }
+
+  //if (gap < 0 or (gap > 0 and gap < 49)) { //we're close to setpoint, use conservative tuning parameters
+  //myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
+  HEATERSTATE = HEATINGPID;
+  //} else {
+  //we're far from setpoint, use aggressive tuning parameters
+  //myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
+  //HEATERSTATE = PREHEATING;//set state preheat
+  //}
 
   switch (HEATERSTATE) {
     case HEATINGPID:
-      Serial.println(F("HEATINGPID"));
-      myQuickPID.Compute();
-      if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
-        setDutyPWMPD3((int)Output);
-        Output > 25 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
+      //Serial.println(F("HEATINGPID"));
 
-        Serial.println(F("HEATINGPID NO ERROR"));
-      }
+      //if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
+        myPID.Compute();
+        setDutyPWMPD3((int)Output);
+        //analogWrite(3, Output);
+        Output > 75 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
+        //Serial.println(F("HEATINGPID NO ERROR"));
+      //} else {
+        //Serial.println(F("HEATINGPID ERROR"));
+        //setDutyPWMPD3(255); // OFF
+      //}
+
       t8.disable();
       break;
     case PREHEATING:
-      Serial.println(F("PREHEATING"));
-
+      Output = 185;
       if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
-        setDutyPWMPD3(63); // 25% output
-        Serial.println(F("PREHEATING NO ERROR"));
+        setDutyPWMPD3(Output); // 25% output
+        //Serial.println(F("PRE-HEATING NO ERROR"));
+      } else {
+        //Serial.println(F("PRE-HEATING ERROR"));
+        setDutyPWMPD3(255); // OFF
       }
 
       t8.enableIfNot(); // enable
       break;
   }
+
+  Serial.print(F("Setpoint:"));  Serial.print(Setpoint);  Serial.print(F(","));
+  Serial.print(F("Input:"));     Serial.print(Input);     Serial.print(F(","));
+  Serial.print(F("Output:"));    Serial.print(Output);    Serial.println(F(","));
 }
 
 
@@ -334,7 +347,7 @@ void t6Callback() {
 void t7Callback() {
 
   if (flagErrorThermocouple || flagErrorUTemp || flagErrorHeater) {
-    setDutyPWMPD3(0);
+    setDutyPWMPD3(255); // PWM REVERSE 255-> NO HEATING ||  0-> HEATING
     t1.disable(); // Disable Presetmode Temp - Setpoint
     t6.enableIfNot();  // Enable blink SOS
   } else {
@@ -364,12 +377,14 @@ void t7Callback() {
 void t8Callback() {
 
   if (!t8.isFirstIteration()) {
-    float gap1 = abs(Setpoint - readTemp); //distance away from setpoint
+    float gap1 = abs(Setpoint - Input); //distance away from setpoint
 
-    Serial.print(F("gap1 = "));
-    Serial.print(gap1);
-    Serial.print(F("\t antgap = "));
-    Serial.println(antgap);
+    /*
+      Serial.print(F("gap1 = "));
+      Serial.print(gap1);
+      Serial.print(F("\t antgap = "));
+      Serial.println(antgap);
+    */
 
     if (gap1 >= antgap + WATCH_TEMP_INCREASE) {
       flagErrorHeater = false;
@@ -474,7 +489,7 @@ void longPressStart1() {
       EEPROM.put(1, Setpoint); // Setpoint
 
       t1.enableIfNot();
-      t7.enableIfNot(); 
+      t7.enableIfNot();
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -493,7 +508,7 @@ void longPressStart1() {
       }
 
       t1.enableIfNot();
-      t7.enableIfNot(); 
+      t7.enableIfNot();
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -506,7 +521,7 @@ void longPressStart1() {
       EEPROM.put(1 + sizeof(float), atoi(brigTitles[counterclick1])); // brightness
 
       t1.enableIfNot();
-      t7.enableIfNot(); 
+      t7.enableIfNot();
       counterclick1 = 0;
       counterclick2 = 0;
       STATE = NORMALMODE;
@@ -587,22 +602,22 @@ void setup() {
   setDutyPWMPD3(0);
 
   //Load last configuration
-  Serial.print(F("Read Address 0 (°C/°F): "));
+  //Serial.print(F("Read Address 0 (°C/°F): "));
   if (EEPROM.read(0)) { //Read temperature flag status    (Address 0)
     flagTemp = true;
-    Serial.println(F("true"));
+    //Serial.println(F("true"));
   } else {
     flagTemp = false;
-    Serial.println(F("false"));
+    //Serial.println(F("false"));
   }
 
-  Serial.print(F("Read Address 1 setpoint: "));
+  //Serial.print(F("Read Address 1 setpoint: "));
   EEPROM.get(1, Setpoint);
-  Serial.println(Setpoint);
+  //Serial.println(Setpoint);
 
-  Serial.print(F("Read Address 2 brightness: "));
+  //Serial.print(F("Read Address 2 brightness: "));
   EEPROM.get(1 + sizeof(float), dutyDisplay);
-  Serial.println(dutyDisplay);
+  //Serial.println(dutyDisplay);
 
 
   // Init lcd
@@ -622,7 +637,7 @@ void setup() {
   button2.attachDuringLongPress(longPress2);
 
   //turn the PID on
-  myQuickPID.SetMode(QuickPID::AUTOMATIC);
+  myPID.SetMode(AUTOMATIC); //Turn ON PID
 
   runner.startNow();  // set point-in-time for scheduling start
   t6.disable(); // blink SOS

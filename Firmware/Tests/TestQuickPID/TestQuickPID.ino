@@ -31,7 +31,7 @@ float aggDOn =  1.0;  // derivative on Error to Measurement ratio (0.0-1.0)
 float consDOn = 0.0;  // derivative on Error to Measurement ratio (0.0-1.0)
 
 //Specify the links and initial tuning parameters
-QuickPID myQuickPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, aggPOn, consDOn, QuickPID::DIRECT);
+QuickPID myQuickPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, aggPOn, consDOn, QuickPID::DIRECT); // REVERSE
 
 void setup()
 {
@@ -47,10 +47,12 @@ void setup()
 
   //initialize the variables we're linked to
 
-  Setpoint = 40;
+  Setpoint = 150;
 
   //turn the PID on
   myQuickPID.SetMode(QuickPID::AUTOMATIC);
+  myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
+  Serial.println("TUNING CONS");
 }
 
 void loop()
@@ -59,14 +61,15 @@ void loop()
   Serial.println(Input);
 
   float gap = abs(Setpoint - Input); //distance away from setpoint
-  if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
-    myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
-    Serial.println("TUNING CONS");
-  } else {
-    //we're far from setpoint, use aggressive tuning parameters
-    myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
-    Serial.println("TUNING AGG");
-  }
+  Serial.print("GAP = ");
+  Serial.println(gap);
+  //if (gap < 10) { //we're close to setpoint, use conservative tuning parameters
+
+  //} else {
+  //we're far from setpoint, use aggressive tuning parameters
+  //myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
+  //Serial.println("TUNING AGG");
+  //}
   myQuickPID.Compute();
   setDutyPWMPD3(Output);
   delay(400);
