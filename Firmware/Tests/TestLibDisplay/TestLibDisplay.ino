@@ -17,7 +17,10 @@
   32                A2             PD2          GREEN
   01                D3             PD3          OUT_PWR
   11                D7             PD7          RED
-
+  ----------------
+  ER1 -> Does not detect thermocouple
+  ER2 -> Microcontroller temperature is higher than critical temperature
+  ER3 -> There is a problem with the heater
 */
 
 #include <avr/pgmspace.h>
@@ -43,14 +46,12 @@
 #define UTEMP       A2
 
 // ----------------------------------------------- THERMAL_PROTECTION
-#define WATCH_TEMP_PERIOD 20  // Seconds
+#define WATCH_TEMP_PERIOD 30  // Seconds
 #define WATCH_TEMP_INCREASE 2 // Degrees Celsius 
 // -----------------------------------------------
 
-// Setup a new OneButton on pin A1.
-OneButton button1(BTN1, true);
-// Setup a new OneButton on pin A2.
-OneButton button2(BTN2, true);
+OneButton button1(BTN1, true); // Setup a new OneButton on pin A1.
+OneButton button2(BTN2, true); // Setup a new OneButton on pin A2.
 
 MAX6675 thermocouple(THERMOCLK, THERMOCS, THERMODO);
 
@@ -261,7 +262,6 @@ void t4Callback() {
 
     }
   */
-
 }
 
 
@@ -274,51 +274,41 @@ void t5Callback() {
   //Serial.print(F("gap -> "));
   //Serial.println(gap);
 
-
   if (gap < 0 or (gap >= 0 and gap < 49)) { //we're close to setpoint, use conservative tuning parameters
-    //myQuickPID.SetTunings(consKp, consKi, consKd, consPOn, consDOn);
     HEATERSTATE = HEATINGPID;
   } else {
-    //we're far from setpoint, use aggressive tuning parameters
-    //myQuickPID.SetTunings(aggKp, aggKi, aggKd, aggPOn, aggDOn);
-    HEATERSTATE = PREHEATING;//set state preheat
+    HEATERSTATE = PREHEATING;//set state preheat //we're far from setpoint, use aggressive tuning parameters
   }
 
   switch (HEATERSTATE) {
     case HEATINGPID:
-      //Serial.println(F("HEATINGPID"));
-
       if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
-        myPID.Compute();
-        setDutyPWMPD3((int)Output);
-        //analogWrite(3, Output);
-        Output > 50 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
         //Serial.println(F("HEATINGPID NO ERROR"));
+        myPID.Compute();
+        Output > 50 ? digitalWrite(LEDBLUE, 0) : digitalWrite(LEDBLUE, 1);
       } else {
         //Serial.println(F("HEATINGPID ERROR"));
-        setDutyPWMPD3(0); // OFF
+        Output = 0; // OFF
       }
-
-      t8.disable();
+      setDutyPWMPD3((int)Output);
+      t8.disable(); // DISABLE THERMAL_PROTECTION_INCREASE
       break;
     case PREHEATING:
-      Output = 80;
       if (!flagErrorThermocouple && !flagErrorUTemp && !flagErrorHeater) {
-        setDutyPWMPD3(Output); // 25% output
+        Output = 80; // 25% output
         //Serial.println(F("PRE-HEATING NO ERROR"));
       } else {
         //Serial.println(F("PRE-HEATING ERROR"));
-        setDutyPWMPD3(0); // OFF
+        Output = 0;
       }
-
-      t8.enableIfNot(); // enable
+      setDutyPWMPD3((int)Output);
+      t8.enableIfNot(); // THERMAL_PROTECTION_INCREASE
       break;
   }
-
   Serial.print(F("Setpoint:"));  Serial.print(Setpoint);  Serial.print(F(","));
   Serial.print(F("Input:"));     Serial.print(Input);     Serial.print(F(","));
   Serial.print(F("Output:"));    Serial.print(Output);    Serial.print(F(","));
-  Serial.print(F("Gap:"));       Serial.print(gap);       Serial.println(F(","));
+  Serial.print(F("GapPID:"));    Serial.print(gap);       Serial.println(F(","));
 }
 
 
@@ -327,14 +317,12 @@ void t5Callback() {
 */
 void t6Callback() {
   t6.getRunCounter() > 5 and t6.getRunCounter() < 13 ? t6.setInterval(502) : t6.setInterval(202);
-
   if ( t6.getRunCounter() & 1 ) {
     digitalWrite(LEDRED, LOW);
   }
   else {
     digitalWrite(LEDRED, HIGH);
   }
-
   if ( t6.isLastIteration() ) {
     t6.restartDelayed( 1 * TASK_SECOND );
     digitalWrite(LEDRED, HIGH);
@@ -346,9 +334,9 @@ void t6Callback() {
    @brief Check for an error in the system
 */
 void t7Callback() {
-
   if (flagErrorThermocouple || flagErrorUTemp || flagErrorHeater) {
-    setDutyPWMPD3(0); // PWM REVERSE 255-> NO HEATING ||  0-> HEATING
+    Output = 0;
+    setDutyPWMPD3((int)Output);
     t1.disable(); // Disable Presetmode Temp - Setpoint
     t6.enableIfNot();  // Enable blink SOS
   } else {
@@ -359,16 +347,12 @@ void t7Callback() {
   if (flagErrorThermocouple) {
     Mylcd.lcdPrint(0, "Er1"); // ER1 -> Does not detect thermocouple
   }
-
-
   if (flagErrorUTemp) {
     Mylcd.lcdPrint(0, "Er2"); // ER2 -> Microcontroller temperature is higher than critical temperature
   }
-
   if (flagErrorHeater) {
     Mylcd.lcdPrint(0, "Er3"); // ER3 -> There is a problem with the heater
   }
-
 }
 
 
@@ -376,26 +360,23 @@ void t7Callback() {
    @brief THERMAL_PROTECTION_INCREASE
 */
 void t8Callback() {
-
   if (!t8.isFirstIteration()) {
     float gap1 = abs(Setpoint - Input); //distance away from setpoint
-
+    Serial.print(F("gap_THERMAL:"));    Serial.print(gap1);   Serial.print(F(","));
+    Serial.print(F("Antgap_THERMAL:")); Serial.print(antgap); Serial.println(F(","));
     /*
       Serial.print(F("gap1 = "));
       Serial.print(gap1);
       Serial.print(F("\t antgap = "));
       Serial.println(antgap);
     */
-
-    if (gap1 >= antgap + WATCH_TEMP_INCREASE) {
+    if (gap1 >= antgap + WATCH_TEMP_INCREASE) { //////////////////////////////////////////////////////////////////// TO DEBUG
       flagErrorHeater = false;
     } else {
       flagErrorHeater = true;
     }
-
     antgap = gap1;
   }
-
 }
 
 //----------------------------------------------------------------------------------------
@@ -407,9 +388,7 @@ void t8Callback() {
 */
 void click1() {
   if (STATE != NORMALMODE) {
-
     counterclick1++;
-
     if (counterclick1 == maxIndex) {
       counterclick1 = 0;
     }
@@ -441,8 +420,7 @@ void click1() {
    @brief This function will be called once, when the button1 is pressed for a long time.
 */
 void longPressStart1() {
-  Serial.println("Button 1 longPress start");
-
+  //Serial.println(F("Button 1 longPress start"));
   switch (STATE) {
     case INTOMENU:
       if (menuTitles[counterclick1] == "PrE" ) {
@@ -475,20 +453,17 @@ void longPressStart1() {
         Mylcd.lcdPrint(0, "---");
         counterclick1 = 0;
         counterclick2 = 0;
-        EEPROM.put(1, 150.0); // Setpoint
-        EEPROM.put(0, 1); // °C
+        EEPROM.put(1, 150.0);               // Setpoint
+        EEPROM.put(0, 1);                   // °C
         EEPROM.put(1 + sizeof(float), 255); // brightness
         Serial.println(F("RESET"));
         resetFunc();
       }
       break;
     case INTOPRE:
-
       Setpoint = atof(preTitles[counterclick1]);
       Serial.println(Setpoint);
-
       EEPROM.put(1, Setpoint); // Setpoint
-
       t1.enableIfNot();
       t7.enableIfNot();
       counterclick1 = 0;
@@ -496,18 +471,16 @@ void longPressStart1() {
       STATE = NORMALMODE;
       break;
     case INTODEGREES:
-
       if (degTitles[counterclick1] == " C " ) {
-        Serial.println("C");
+        Serial.println(F("C"));
         flagTemp = true;
         EEPROM.put(0, 1); // °C
       }
       if (degTitles[counterclick1] == " F " ) {
-        Serial.println("F");
+        Serial.println(F("F"));
         flagTemp = false;
         EEPROM.put(0, 0); // °F
       }
-
       t1.enableIfNot();
       t7.enableIfNot();
       counterclick1 = 0;
@@ -515,12 +488,9 @@ void longPressStart1() {
       STATE = NORMALMODE;
       break;
     case INTOPWMLCD:
-
       Mylcd.setDutyCycleLcd(atoi(brigTitles[counterclick1]));
       Serial.println(atoi(brigTitles[counterclick1]));
-
       EEPROM.put(1 + sizeof(float), atoi(brigTitles[counterclick1])); // brightness
-
       t1.enableIfNot();
       t7.enableIfNot();
       counterclick1 = 0;
@@ -534,11 +504,9 @@ void longPressStart1() {
 
 void click2() {
   if (STATE != NORMALMODE) {
-
     if (counterclick2 <= 0) {
       counterclick2 = maxIndex;
     }
-
     counterclick2--;
 
     Serial.print(F("Max index click 2: "));
@@ -565,7 +533,6 @@ void click2() {
 }
 
 void longPress2() {
-
   switch (STATE) {
     case NORMALMODE:
       if (button1.isLongPressed() && button2.isLongPressed()) {
@@ -579,7 +546,6 @@ void longPress2() {
       }
       break;
   }
-
 }
 
 void setup() {
@@ -648,8 +614,6 @@ void setup() {
 
 void loop() {
   runner.execute();
-
-  // keep watching the push buttons:
-  button1.tick();
+  button1.tick(); // keep watching the push buttons
   button2.tick();
 }
